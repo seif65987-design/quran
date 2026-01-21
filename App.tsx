@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 import { SURAHS, SYSTEM_INSTRUCTION } from './constants';
 import { Surah, RecitationMessage, AppState } from './types';
@@ -27,7 +27,7 @@ const SurahCard: React.FC<{
     </div>
     <div className="flex justify-between items-center w-full mt-1">
       <span className="text-xs text-slate-400">{surah.transliteration}</span>
-      <span className="text-xs text-slate-500">{surah.versesCount} آيات</span>
+      <span className="text-xs text-slate-500">{surah.versesCount} آية</span>
     </div>
   </button>
 );
@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<RecitationMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Audio Contexts & Refs
   const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -65,6 +66,14 @@ const App: React.FC = () => {
   useEffect(() => {
     scrollToEnd();
   }, [messages]);
+
+  const filteredSurahs = useMemo(() => {
+    return SURAHS.filter(s => 
+      s.name.includes(searchQuery) || 
+      s.transliteration.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.id.toString() === searchQuery
+    );
+  }, [searchQuery]);
 
   const stopRecitation = useCallback(async () => {
     if (streamRef.current) {
@@ -153,7 +162,6 @@ const App: React.FC = () => {
             scriptProcessor.connect(inputAudioContextRef.current!.destination);
           },
           onmessage: async (message: LiveServerMessage) => {
-            // Audio Output
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (base64Audio) {
               const outCtx = outputAudioContextRef.current!;
@@ -168,40 +176,24 @@ const App: React.FC = () => {
               sourcesRef.current.add(source);
             }
 
-            // Input Transcription (What the user says)
             if (message.serverContent?.inputTranscription) {
               const text = message.serverContent.inputTranscription.text;
               currentInputText.current += text;
-              
               setMessages(prev => {
                 const filtered = prev.filter(m => m.id !== 'live-input');
-                return [...filtered, { 
-                  id: 'live-input', 
-                  type: 'user', 
-                  text: currentInputText.current, 
-                  timestamp: Date.now() 
-                }];
+                return [...filtered, { id: 'live-input', type: 'user', text: currentInputText.current, timestamp: Date.now() }];
               });
             }
 
-            // Output Transcription (What the model says)
             if (message.serverContent?.outputTranscription) {
               const text = message.serverContent.outputTranscription.text;
               currentOutputText.current += text;
-
               setMessages(prev => {
                 const filtered = prev.filter(m => m.id !== 'live-output');
-                return [...filtered, { 
-                  id: 'live-output', 
-                  type: 'bot', 
-                  text: currentOutputText.current, 
-                  timestamp: Date.now(),
-                  isError: currentOutputText.current.includes('خطأ') || currentOutputText.current.includes('أخطأت')
-                }];
+                return [...filtered, { id: 'live-output', type: 'bot', text: currentOutputText.current, timestamp: Date.now(), isError: currentOutputText.current.includes('خطأ') || currentOutputText.current.includes('أخطأت') }];
               });
             }
 
-            // Finalize Turn
             if (message.serverContent?.turnComplete) {
               setMessages(prev => {
                 const finalized = prev.map(m => {
@@ -243,7 +235,7 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-emerald-50 overflow-hidden shadow-2xl relative border-x border-emerald-100">
       {/* Header */}
-      <header className="bg-emerald-700 text-white p-6 rounded-b-[2.5rem] shadow-lg z-10 transition-all">
+      <header className="bg-emerald-700 text-white p-6 rounded-b-[2.5rem] shadow-lg z-20 transition-all">
         <div className="flex justify-between items-center mb-4">
           <div className="bg-emerald-600/50 p-2 rounded-xl">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -259,17 +251,31 @@ const App: React.FC = () => {
         </div>
         
         {appState === AppState.IDLE ? (
-          <div className="bg-emerald-800/40 p-4 rounded-2xl backdrop-blur-sm">
-            <p className="text-emerald-100 text-sm leading-relaxed">
-              مرحباً بك! اختر السورة التي تود تسميعها اليوم لنبدأ رحلة الحفظ معاً.
-            </p>
+          <div className="space-y-4">
+             <div className="bg-emerald-800/40 p-4 rounded-2xl backdrop-blur-sm">
+              <p className="text-emerald-100 text-sm leading-relaxed">
+                مرحباً بك! اختر أي سورة من القرآن الكريم لنبدأ المراجعة.
+              </p>
+            </div>
+            {/* Search Bar */}
+            <div className="relative group">
+              <input 
+                type="text" 
+                placeholder="ابحث عن سورة (اسم أو رقم)..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-white/10 border border-white/20 rounded-2xl py-3 px-10 text-white placeholder-emerald-200/60 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white/20 transition-all"
+              />
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-emerald-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
           </div>
         ) : (
           <div className="flex items-center gap-4 bg-emerald-800/40 p-3 rounded-2xl border border-white/10">
             <div className="relative">
               <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center shadow-inner overflow-hidden">
                 <span className="quran-font text-2xl">📖</span>
-                {/* Visualizer overlay */}
                 <div 
                   className="absolute bottom-0 left-0 right-0 bg-white/30 transition-all duration-75" 
                   style={{ height: `${Math.min(audioLevel * 1.5, 100)}%` }}
@@ -297,34 +303,32 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto px-4 py-6 no-scrollbar" ref={transcriptContainerRef}>
         {appState === AppState.IDLE ? (
           <div className="space-y-6">
-            <h2 className="text-slate-800 font-bold text-lg px-2">اختر سورة</h2>
-            <div className="grid grid-cols-2 gap-4">
-              {SURAHS.map(surah => (
-                <SurahCard 
-                  key={surah.id} 
-                  surah={surah} 
-                  isSelected={selectedSurah?.id === surah.id} 
-                  onSelect={setSelectedSurah} 
-                />
-              ))}
+            <div className="flex justify-between items-center px-2">
+              <h2 className="text-slate-800 font-bold text-lg">قائمة السور ({filteredSurahs.length})</h2>
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="text-emerald-600 text-xs font-bold hover:underline"
+                >
+                  مسح البحث
+                </button>
+              )}
             </div>
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-emerald-100 mt-4 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-full -mr-10 -mt-10 opacity-50"></div>
-              <h3 className="text-emerald-800 font-bold mb-2 relative z-10">كيف يعمل التطبيق؟</h3>
-              <ul className="text-sm text-slate-600 space-y-3 relative z-10">
-                <li className="flex gap-2">
-                  <span className="bg-emerald-100 text-emerald-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span>
-                  <span>اختر سورة من الأعلى واضغط ابدأ.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="bg-emerald-100 text-emerald-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">2</span>
-                  <span>اقرأ بوضوح؛ سيظهر كلامك مباشرة على الشاشة.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="bg-emerald-100 text-emerald-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">3</span>
-                  <span>إذا أخطأت، سيقوم المعلم بتنبيهك وتصحيح الآية.</span>
-                </li>
-              </ul>
+            <div className="grid grid-cols-2 gap-4 pb-10">
+              {filteredSurahs.length > 0 ? (
+                filteredSurahs.map(surah => (
+                  <SurahCard 
+                    key={surah.id} 
+                    surah={surah} 
+                    isSelected={selectedSurah?.id === surah.id} 
+                    onSelect={setSelectedSurah} 
+                  />
+                ))
+              ) : (
+                <div className="col-span-2 py-10 text-center text-slate-400">
+                  <p>لا توجد نتائج مطابقة لبحثك.</p>
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -338,9 +342,9 @@ const App: React.FC = () => {
                     </svg>
                   </div>
                 </div>
-                <div className="text-center">
+                <div className="text-center px-6">
                   <p className="font-bold text-slate-600">المعلم ينصت إليك...</p>
-                  <p className="text-sm text-slate-400 mt-1">ابدأ بقراءة "أعوذ بالله من الشيطان الرجيم"</p>
+                  <p className="text-sm text-slate-400 mt-1">ابدأ تلاوة سورة {selectedSurah?.name} الآن بوضوح لضمان دقة التصحيح.</p>
                 </div>
               </div>
             )}
@@ -418,4 +422,26 @@ const App: React.FC = () => {
                    ></div>
                  ))}
                </div>
-               <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-
+               <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest animate-pulse">نظام التعرف نشط</span>
+            </div>
+            <button
+              onClick={stopRecitation}
+              className="w-full py-4 bg-rose-50 text-rose-600 border-2 border-rose-100 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all active:scale-95 hover:bg-rose-100"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              إنهاء التسميع
+            </button>
+          </div>
+        )}
+      </footer>
+
+      {/* Background decoration */}
+      <div className="absolute top-1/4 right-0 w-64 h-64 bg-emerald-100/30 rounded-full blur-3xl -z-10 pointer-events-none"></div>
+      <div className="absolute bottom-1/4 left-0 w-64 h-64 bg-emerald-200/20 rounded-full blur-3xl -z-10 pointer-events-none"></div>
+    </div>
+  );
+};
+
+export default App;
