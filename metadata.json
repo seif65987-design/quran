@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Hafiz Pro - Quran Memorization Companion",
+  "description": "A high-fidelity Quran memorization assistant that listens to your recitation and provides real-time feedback on accuracy and tajweed errors.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
