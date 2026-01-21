@@ -79,6 +79,7 @@ const App: React.FC = () => {
   
   const currentInputText = useRef('');
   const currentOutputText = useRef('');
+  const sessionErrorsRef = useRef<{type: string, text: string, timestamp: number}[]>([]);
 
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -130,9 +131,23 @@ const App: React.FC = () => {
       try { source.stop(); } catch(e) {}
     });
     sourcesRef.current.clear();
+
+    // Log Session Summary to Console
+    if (appState === AppState.RECITING) {
+      console.log(`%c[ملخص الجلسة] سورة: ${selectedSurah?.name}`, 'color: #10b981; font-weight: bold; font-size: 14px;');
+      console.log(`إجمالي الأخطاء: ${sessionErrorsRef.current.length}`);
+      if (sessionErrorsRef.current.length > 0) {
+        console.table(sessionErrorsRef.current.map(err => ({
+          'النوع': err.type,
+          'التوقيت': new Date(err.timestamp).toLocaleTimeString(),
+          'التنبيه': err.text
+        })));
+      }
+    }
+
     setAppState(AppState.IDLE);
     setAudioLevel(0);
-  }, []);
+  }, [selectedSurah, appState]);
 
   const startRecitation = async () => {
     if (!selectedSurah) return;
@@ -140,6 +155,8 @@ const App: React.FC = () => {
       setAppState(AppState.PREPARING);
       setError(null);
       setMessages([]);
+      sessionErrorsRef.current = []; // Reset errors for new session
+      
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -148,6 +165,7 @@ const App: React.FC = () => {
       analyserRef.current = analyser;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
@@ -160,6 +178,7 @@ const App: React.FC = () => {
         callbacks: {
           onopen: () => {
             setAppState(AppState.RECITING);
+            console.log(`%c[بدء الجلسة] سورة: ${selectedSurah.name}`, 'color: #059669; font-weight: bold;');
             const source = inputAudioContextRef.current!.createMediaStreamSource(stream);
             source.connect(analyser);
             const scriptProcessor = inputAudioContextRef.current!.createScriptProcessor(4096, 1, 1);
@@ -211,15 +230,34 @@ const App: React.FC = () => {
               }]);
             }
             if (message.serverContent?.turnComplete) {
+              // Track identified errors for console logging
+              const finalizedText = currentOutputText.current;
+              const isTajweedErr = finalizedText.includes('تنبيه تجويد');
+              const isHifzErr = finalizedText.includes('تنبيه حفظ') || finalizedText.includes('خطأ');
+              
+              if (isTajweedErr || isHifzErr) {
+                const errorData = {
+                  type: isTajweedErr ? 'تجويد' : 'حفظ',
+                  text: finalizedText,
+                  timestamp: Date.now()
+                };
+                sessionErrorsRef.current.push(errorData);
+                console.warn(`[تنبيه خطأ] سورة: ${selectedSurah.name} | النوع: ${errorData.type} | النص: ${finalizedText}`);
+              }
+
               currentInputText.current = '';
               currentOutputText.current = '';
             }
           },
-          onerror: () => stopRecitation(),
+          onerror: (e) => {
+            console.error('[Session Error]', e);
+            stopRecitation();
+          },
           onclose: () => setAppState(AppState.IDLE)
         }
       });
     } catch (err) {
+      console.error('[Start Error]', err);
       setError("يجب السماح بالميكروفون.");
       setAppState(AppState.IDLE);
     }
