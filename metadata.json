@@ -1,6 +1,6 @@
 {
-  "name": "Copy of Hafiz Pro - Quran Memorization Companion",
-  "description": "A high-fidelity Quran memorization assistant that listens to your recitation and provides real-time feedback on accuracy and tajweed errors.",
+  "name": "Hafiz Pro - تطبيق التسميع الذكي",
+  "description": "تطبيق أندرويد مدعوم بذكاء Gemini لمراجعة وتصحيح حفظ القرآن الكريم في الوقت الفعلي.",
   "requestFramePermissions": [
     "microphone"
   ]
