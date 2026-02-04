@@ -11,6 +11,7 @@ export interface RecitationMessage {
   type: 'user' | 'bot';
   text: string;
   isError?: boolean;
+  isTajweed?: boolean;
   timestamp: number;
 }
 
@@ -18,5 +19,6 @@ export enum AppState {
   IDLE = 'IDLE',
   PREPARING = 'PREPARING',
   RECITING = 'RECITING',
+  REFLECTING = 'REFLECTING',
   ERROR = 'ERROR'
 }
